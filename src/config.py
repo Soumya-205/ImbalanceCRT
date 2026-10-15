@@ -26,3 +26,15 @@ LR = 1e-3
 BATCH_SIZE = 256
 
 N_RESPLITS=100
+
+
+
+# --- Model C (conformal risk training) and control A+; values from Yeh et al.'s
+#     official code (run_polyp.py) unless marked ---
+CRT_T = 0.1                     # sigmoid temperature in the smooth FPR loss (Yeh: T=0.1)
+FT_LRS = [1e-2, 1e-3, 1e-4]     # fine-tuning LR grid (Yeh: 1e-2..1e-6; 1e-5/1e-6 dropped for CPU)
+FT_MAX_EPOCHS = 100             # Yeh: MAX_EPOCHS = 100
+FT_PATIENCE = 10                # Yeh: stop after >10 epochs without val improvement
+FT_STEPS_PER_EPOCH = 20         # ours: fixed optimisation budget per epoch at every ratio
+CRT_NEG_PER_STEP = 256          # ours: negatives per step for the FPR loss
+VAL_FRAC = 0.2                  # ours: share of TRAIN held out for early stopping / LR choice
