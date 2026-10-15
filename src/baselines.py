@@ -5,6 +5,7 @@ Usage (from the project root):
     python src/baselines.py            # full sweep -> results/fraud_baselines.csv
 """
 import argparse
+import copy
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,7 @@ import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 
 from config import (RESULTS_DIR, RANDOM_SEEDS, IMBALANCE_RATIOS, TARGET_FNR_LEVELS,
-                    HIDDEN, EPOCHS, LR, BATCH_SIZE, N_RESPLITS)
+                    HIDDEN, EPOCHS, LR, BATCH_SIZE, N_RESPLITS, BASE_MAX_EPOCHS, FT_PATIENCE)
 from models import MLP, predict_logits
 from crc import crc_threshold_fnr, fnr_fpr, oracle_fpr
 from data import get_imbalance_sweep_splits
@@ -25,7 +26,14 @@ def to_np(X, y):
     return X.values.astype(np.float32), y.values.astype(np.float32)
 
 
-def train_bce(X, y, class_weighted, seed):
+def train_bce(X, y, class_weighted, seed, val=None):
+    """Train Model A (class_weighted=False) or B (True).
+    val=None: exactly EPOCHS epochs (preliminary baselines.py runs).
+    val=(X_val, y_val): early stopping on the validation loss (same loss as training,
+    including the class weight for B), keeping the best epoch, stopping after more than
+    FT_PATIENCE epochs without improvement, at most BASE_MAX_EPOCHS. This gives every
+    imbalance level a converged model; a fixed epoch count gives the 30% level
+    (656 rows, 3 batches/epoch) only 90 gradient steps vs 2,310 at 1%."""
     torch.manual_seed(seed)                      # same init for A and B at a given seed
     model = MLP(X.shape[1], hidden=HIDDEN)
     opt = torch.optim.Adam(model.parameters(), lr=LR)
@@ -35,14 +43,28 @@ def train_bce(X, y, class_weighted, seed):
         pw = torch.tensor([(len(y) - n_pos) / n_pos])   # e.g. 99 at 1% positives
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pw)
     Xt, yt = torch.from_numpy(X), torch.from_numpy(y)
-    model.train()
-    for _ in range(EPOCHS):
+    if val is not None:
+        Xv, yv = torch.from_numpy(val[0]), torch.from_numpy(val[1])
+    best, best_state, since = np.inf, None, 0
+    for _ in range(BASE_MAX_EPOCHS if val is not None else EPOCHS):
+        model.train()
         perm = torch.randperm(len(yt))
         for i in range(0, len(yt), BATCH_SIZE):
             idx = perm[i:i + BATCH_SIZE]
             opt.zero_grad()
             loss_fn(model(Xt[idx]), yt[idx]).backward()
             opt.step()
+        if val is not None:
+            model.eval()
+            with torch.no_grad():
+                v = loss_fn(model(Xv), yv).item()
+            since += 1
+            if v < best:
+                best, best_state, since = v, copy.deepcopy(model.state_dict()), 0
+            if since > FT_PATIENCE:
+                break
+    if val is not None:
+        model.load_state_dict(best_state)
     return model
 
 

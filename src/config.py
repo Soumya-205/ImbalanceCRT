@@ -38,3 +38,6 @@ FT_PATIENCE = 10                # Yeh: stop after >10 epochs without val improve
 FT_STEPS_PER_EPOCH = 20         # ours: fixed optimisation budget per epoch at every ratio
 CRT_NEG_PER_STEP = 256          # ours: negatives per step for the FPR loss
 VAL_FRAC = 0.2                  # ours: share of TRAIN held out for early stopping / LR choice
+
+BASE_MAX_EPOCHS = 500           # A/B in train_crt.py: early stopping on val loss, at most this many epochs
+PRIMARY_FT_LR = 1e-3            # pre-specified (Oct 15, before the v2 run) primary fine-tuning LR for C and A+
