@@ -22,3 +22,4 @@ outputs/*.json
 
 # VS Code
 .vscode/
+!results/*.csv

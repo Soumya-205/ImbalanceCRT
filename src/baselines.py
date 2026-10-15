@@ -1,50 +1,94 @@
+"""Models A (BCE) and B (class-weighted BCE), each followed by post-hoc CRC.
+
+Usage (from the project root):
+    python src/baselines.py --quick    # 1 seed, 5% ratio, prints only
+    python src/baselines.py            # full sweep -> results/fraud_baselines.csv
+"""
+import argparse
+
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
-from models import MLP, predict_scores
-from crc import crc_threshold_fnr, fnr_fpr
+from sklearn.metrics import roc_auc_score
+
+from config import (RESULTS_DIR, RANDOM_SEEDS, IMBALANCE_RATIOS, TARGET_FNR_LEVELS,
+                    HIDDEN, EPOCHS, LR, BATCH_SIZE)
+from models import MLP, predict_logits
+from crc import crc_threshold_fnr, fnr_fpr, oracle_fpr
 from data import get_imbalance_sweep_splits
-from config import TARGET_FNR_LEVELS
+
+MODELS = {"A": False, "B": True}   # model name -> use class weighting?
+
 
 def to_np(X, y):
     return X.values.astype(np.float32), y.values.astype(np.float32)
 
-def train_bce(X, y, class_weighted, seed, epochs=30, lr=1e-3, batch_size=256):
-    torch.manual_seed(seed)
-    model = MLP(X.shape[1])
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+
+def train_bce(X, y, class_weighted, seed):
+    torch.manual_seed(seed)                      # same init for A and B at a given seed
+    model = MLP(X.shape[1], hidden=HIDDEN)
+    opt = torch.optim.Adam(model.parameters(), lr=LR)
     pw = None
     if class_weighted:
         n_pos = float(y.sum())
-        pw = torch.tensor([(len(y) - n_pos) / n_pos], dtype=torch.float32)
+        pw = torch.tensor([(len(y) - n_pos) / n_pos])   # e.g. 99 at 1% positives
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pw)
     Xt, yt = torch.from_numpy(X), torch.from_numpy(y)
-    for _ in range(epochs):
+    model.train()
+    for _ in range(EPOCHS):
         perm = torch.randperm(len(yt))
-        for i in range(0, len(yt), batch_size):
-            idx = perm[i:i + batch_size]
+        for i in range(0, len(yt), BATCH_SIZE):
+            idx = perm[i:i + BATCH_SIZE]
             opt.zero_grad()
             loss_fn(model(Xt[idx]), yt[idx]).backward()
             opt.step()
     return model
 
-def run_baseline(train, cal, test, class_weighted, seed):
-    X_tr, y_tr = to_np(*train)
-    X_cal, y_cal = to_np(*cal)
-    X_te, y_te = to_np(*test)
-    model = train_bce(X_tr, y_tr, class_weighted, seed)
-    s_cal, s_te = predict_scores(model, X_cal), predict_scores(model, X_te)
-    out = []
+
+def evaluate(model, cal, test):
+    """Post-hoc CRC on calibration set, metrics on test set.
+    Model C will reuse this exact function, so all models are scored identically."""
+    (X_cal, y_cal), (X_te, y_te) = cal, test
+    s_cal, s_te = predict_logits(model, X_cal), predict_logits(model, X_te)
+    auroc = roc_auc_score(y_te, s_te)
+    rows = []
     for alpha in TARGET_FNR_LEVELS:
         lam, ok = crc_threshold_fnr(s_cal[y_cal == 1], alpha)
         fnr, fpr = fnr_fpr(y_te, s_te, lam)
-        out.append(dict(alpha=alpha, fnr=fnr, fpr=fpr, lam=lam, feasible=ok))
-    return out
+        rows.append(dict(alpha=alpha, fnr=fnr, fpr=fpr, lam=lam, feasible=ok,
+                         oracle_fpr=oracle_fpr(y_te, s_te, alpha), auroc=auroc,
+                         n_cal_pos=int(y_cal.sum())))
+    return rows
+
+
+def main(quick):
+    seeds = [0] if quick else RANDOM_SEEDS
+    ratios = [0.05] if quick else IMBALANCE_RATIOS
+    rows = []
+    for seed in seeds:
+        sweep = get_imbalance_sweep_splits(seed, ratios=ratios)
+        for ratio, (train, cal, test) in sweep.items():
+            train, cal, test = to_np(*train), to_np(*cal), to_np(*test)
+            for name, cw in MODELS.items():
+                model = train_bce(*train, class_weighted=cw, seed=seed)
+                for r in evaluate(model, cal, test):
+                    rows.append(dict(dataset="fraud", model=name, seed=seed, ratio=ratio, **r))
+                    print(f"seed={seed} ratio={ratio:.2f} model={name} alpha={r['alpha']:.2f} | "
+                          f"FNR={r['fnr']:.3f} FPR={r['fpr']:.4f} "
+                          f"oracleFPR={r['oracle_fpr']:.4f} AUROC={r['auroc']:.4f}")
+
+    df = pd.DataFrame(rows)
+    if not quick:
+        out = RESULTS_DIR / "fraud_baselines.csv"
+        df.to_csv(out, index=False)
+        print(f"\nSaved {len(df)} rows to {out}")
+    print("\nMean over seeds:")
+    print(df.groupby(["ratio", "model", "alpha"])[["fnr", "fpr", "oracle_fpr", "auroc"]]
+            .mean().round(4))
+
 
 if __name__ == "__main__":
-    seed = 0
-    train, cal, test = get_imbalance_sweep_splits(seed)[0.05]
-    for name, cw in [("A (BCE)", False), ("B (weighted BCE)", True)]:
-        for r in run_baseline(train, cal, test, cw, seed):
-            print(f"Model {name} | alpha={r['alpha']:.2f} | "
-                  f"FNR={r['fnr']:.3f} | FPR={r['fpr']:.3f} | lam={r['lam']:.4f}")
+    p = argparse.ArgumentParser()
+    p.add_argument("--quick", action="store_true", help="1 seed, 5%% ratio, no CSV")
+    main(p.parse_args().quick)
