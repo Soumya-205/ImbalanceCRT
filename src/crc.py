@@ -23,10 +23,10 @@ def fnr_fpr(y_true, scores, lam):
 
 def oracle_fpr(y_true, scores, alpha):
     """Diagnostic, NOT a method: it looks at test labels.
-    The lowest FPR any threshold could get on this test set while keeping
-    test FNR <= alpha. It measures ranking quality at the operating point, so
-    (fpr - oracle_fpr) is the price paid for choosing lam on a separate
-    calibration set."""
+    FPR at the threshold where test FNR is exactly at the limit (floor(alpha*n_pos)
+    misses). Measures the model's ranking quality at the operating point.
+    Not a per-run lower bound: CRC's realized FNR varies around alpha, so a run
+    whose threshold misses more positives can have FPR below this value."""
     y_true, scores = np.asarray(y_true), np.asarray(scores)
     pos = np.sort(scores[y_true == 1])
     k = int(np.floor(alpha * len(pos)))   # may miss at most k test positives
