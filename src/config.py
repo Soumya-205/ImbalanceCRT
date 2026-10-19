@@ -14,6 +14,9 @@ IMBALANCE_RATIOS = [0.01, 0.05, 0.10, 0.30]   # fraction of positives per sweep 
 TARGET_FNR_LEVELS = [0.05, 0.10]              # alpha (0.01 dropped: infeasible at 148 cal positives)
 RANDOM_SEEDS = list(range(10))
 
+# --- Lending Club: number of defaults sampled per seed and kept at every ratio
+#     (gives 750/450/300 train/cal/test positives with the 50/30/20 split) ---
+LC_N_POS = 1500
 # --- Split proportions (within each imbalance level) ---
 TRAIN_FRAC = 0.5
 CAL_FRAC = 0.3

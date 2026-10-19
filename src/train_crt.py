@@ -39,7 +39,7 @@ from config import (RESULTS_DIR, RANDOM_SEEDS, IMBALANCE_RATIOS, TARGET_FNR_LEVE
                     BATCH_SIZE, CRT_T, FT_LRS, FT_MAX_EPOCHS, FT_PATIENCE,
                     FT_STEPS_PER_EPOCH, CRT_NEG_PER_STEP, VAL_FRAC, PRIMARY_FT_LR)
 from crc import crc_threshold_fnr, fnr_fpr
-from data import get_imbalance_sweep_splits
+from data import get_imbalance_sweep_splits, DATASETS
 from baselines import to_np, train_bce, evaluate
 
 
@@ -149,12 +149,12 @@ def run_grid(model_a, fit, val, seed, mode, alpha=None):
 
 
 # ----------------------------------------------------------------------- main
-def main(quick):
+def main(quick, dataset="fraud"):
     seeds = [0] if quick else RANDOM_SEEDS
     ratios = [0.05] if quick else IMBALANCE_RATIOS
     rows = []
     for seed in seeds:
-        sweep = get_imbalance_sweep_splits(seed, ratios=ratios)
+        sweep = get_imbalance_sweep_splits(seed, ratios=ratios, dataset=dataset)
         for ratio, (train, cal, test) in sweep.items():
             t0 = time.time()
             X_tr, y_tr = to_np(*train)
@@ -185,7 +185,7 @@ def main(quick):
                 for r in evaluate(model, cal, test, seed):
                     if only_alpha is not None and r["alpha"] != only_alpha:
                         continue                         # a C model is only scored at its own alpha
-                    rows.append(dict(dataset="fraud", model=label, seed=seed, ratio=ratio,
+                    rows.append(dict(dataset=dataset, model=label, seed=seed, ratio=ratio,
                                      **r, **info))
                     if label in ("A", "B") or info["lr"] == PRIMARY_FT_LR:
                         print(f"seed={seed} ratio={ratio:.2f} model={label:<2} alpha={r['alpha']:.2f} | "
@@ -195,7 +195,7 @@ def main(quick):
 
     df = pd.DataFrame(rows)
     if not quick:
-        out = RESULTS_DIR / "fraud_crt_v2.csv"
+        out = RESULTS_DIR / "{dataset}_crt_v2.csv"
         df.to_csv(out, index=False)
         print(f"\nSaved {len(df)} rows to {out}")
     cols = ["fnr", "fpr", "oracle_fpr", "auroc"]
@@ -210,4 +210,6 @@ def main(quick):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--quick", action="store_true", help="seed 0, 5%% ratio, no CSV")
-    main(p.parse_args().quick)
+    p.add_argument("--dataset", choices=list(DATASETS), default="fraud")
+    args = p.parse_args()
+    main(args.quick, args.dataset)
