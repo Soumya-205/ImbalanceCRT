@@ -22,8 +22,10 @@ Protocols (fixed Oct 15, before the v2 run):
   picked lr=1e-2, which then did worst on held-out data (selection noise).
 
 Usage (from the project root):
-    python src/train_crt.py --quick    # seed 0, 5% ratio, prints only
-    python src/train_crt.py            # full sweep -> results/fraud_crt_v2.csv
+        python src/train_crt.py --quick                          # fraud, seed 0, 5% ratio
+    python src/train_crt.py                                  # fraud -> results/fraud_crt_v2.csv
+    python src/train_crt.py --dataset lending_club --quick
+    python src/train_crt.py --dataset lending_club           # -> results/lending_club_crt_v2.csv
 """
 import argparse
 import copy
@@ -195,7 +197,7 @@ def main(quick, dataset="fraud"):
 
     df = pd.DataFrame(rows)
     if not quick:
-        out = RESULTS_DIR / "{dataset}_crt_v2.csv"
+        out = RESULTS_DIR / f"{dataset}_crt_v2.csv"
         df.to_csv(out, index=False)
         print(f"\nSaved {len(df)} rows to {out}")
     cols = ["fnr", "fpr", "oracle_fpr", "auroc"]
