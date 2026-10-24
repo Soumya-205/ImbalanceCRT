@@ -14,7 +14,7 @@ For each ratio: keep the positives, subsample negatives to hit the ratio, make a
 stratified train/cal/test split, then impute missing values and standardise
 using statistics from the TRAINING split only.
 """
-
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,7 +24,7 @@ import kagglehub
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from config import DATA_DIR, IMBALANCE_RATIOS, TRAIN_FRAC, CAL_FRAC, TEST_FRAC, LC_N_POS
+from config import DATA_DIR, IMBALANCE_RATIOS, TRAIN_FRAC, CAL_FRAC, TEST_FRAC, LC_N_POS, BAF_N_POS
 
 
 # ===================================================================== fraud
@@ -146,11 +146,54 @@ def load_lending_club() -> pd.DataFrame:
           f"{df.shape[1] - 1} features, {int(df.isna().any(axis=1).sum())} rows with a missing value")
     return df
 
+# ======================================================= bank account fraud (BAF)
+# Jesus et al., NeurIPS 2022 Datasets & Benchmarks: synthetic data generated from a
+# real bank account-opening fraud dataset. Base variant only (Base.csv).
+BAF_LABEL = "fraud_bool"
+BAF_DROP = ["month"]                       # time index; splits here are random
+BAF_MISSING_NEG1 = ["prev_address_months_count", "current_address_months_count",
+                    "bank_months_count", "session_length_in_minutes",
+                    "device_distinct_emails_8w"]           # -1 means missing
+BAF_MISSING_NEG = ["intended_balcon_amount"]               # any negative value means missing
+
+
+@lru_cache(maxsize=1)
+def load_baf() -> pd.DataFrame:
+    """Download (first time only) and clean BAF Base.csv -> numeric table with 'Class'.
+    Categorical (text) columns are one-hot encoded; missing codes become NaN and are
+    filled later with the TRAIN median. Sets DATASETS['baf']['scale_cols']."""
+    csv = Path(kagglehub.dataset_download("sgpjesus/bank-account-fraud-dataset-neurips-2022",
+                                          path="Base.csv"))      # only the base file
+    if zipfile.is_zipfile(csv):                                  # Kaggle may deliver it zipped
+        with zipfile.ZipFile(csv) as z:
+            name = next(n for n in z.namelist() if n.endswith(".csv"))
+            raw = pd.read_csv(z.open(name))
+    else:
+        raw = pd.read_csv(csv)
+    df = raw.drop(columns=[c for c in BAF_DROP if c in raw.columns])
+    for c in BAF_MISSING_NEG1:
+        if c in df.columns:
+            df.loc[df[c] == -1, c] = np.nan
+    for c in BAF_MISSING_NEG:
+        if c in df.columns:
+            df.loc[df[c] < 0, c] = np.nan
+    y = df.pop(BAF_LABEL).astype(int)
+    cat_cols = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]   # text columns
+    num_cols = [c for c in df.columns if c not in cat_cols]
+    df = pd.concat([df[num_cols].astype(np.float32),
+                    pd.get_dummies(df[cat_cols], prefix=cat_cols, dtype=np.float32)], axis=1)
+    df["Class"] = y.values
+    DATASETS["baf"]["scale_cols"] = num_cols
+    print(f"Loaded {len(df)} BAF applications, {df['Class'].mean():.2%} fraud rate, "
+          f"{df.shape[1] - 1} features ({len(num_cols)} numeric, {len(cat_cols)} categorical -> one-hot)")
+    return df
+
 
 # ================================================================ shared pipeline
 DATASETS = {
     "fraud": dict(load=load_fraud_dataset, n_pos=None, scale_cols=FRAUD_SCALE_COLS),
     "lending_club": dict(load=load_lending_club, n_pos=LC_N_POS, scale_cols=LC_NUM_COLS),
+    "baf": dict(load=load_baf, n_pos=BAF_N_POS, scale_cols=None),   # scale_cols set by load_baf
 }
 
 

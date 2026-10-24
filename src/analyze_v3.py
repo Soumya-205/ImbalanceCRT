@@ -63,7 +63,7 @@ def run(dataset):
 
 
 def main():
-    st = pd.DataFrame(sum((run(ds) for ds in ["fraud", "lending_club"]), []))
+    st = pd.DataFrame(sum((run(ds) for ds in ["fraud", "lending_club", "baf"]), []))
     if st.empty:
         return
     st["p_holm"] = np.nan

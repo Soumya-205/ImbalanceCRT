@@ -23,3 +23,5 @@ outputs/*.json
 # VS Code
 .vscode/
 !results/*.csv
+*.txt
+!requirements.txt

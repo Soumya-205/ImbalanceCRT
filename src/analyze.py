@@ -23,7 +23,7 @@ from scipy.stats import t as t_dist, wilcoxon
 
 from config import RESULTS_DIR, PRIMARY_FT_LR
 
-DATASETS = {"fraud": "Credit Card Fraud", "lending_club": "Lending Club"}
+DATASETS = {"fraud": "Credit Card Fraud", "lending_club": "Lending Club", "baf": "Bank Account Fraud"}
 RATIOS = [0.01, 0.05, 0.10, 0.30]
 # Colours: reference palette slots 1-3 (validated colourblind-safe as a set);
 # baseline A is neutral grey. Hatching gives a second, print-safe cue.
