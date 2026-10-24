@@ -114,7 +114,7 @@ def fig1_boxplots(df, alpha=0.10):
     d = primary(df)
     d = d[np.isclose(d.alpha, alpha)]
     models = ["A", "B", "A+", "C"]
-    fig, axes = plt.subplots(len(DATASETS), 1, figsize=(3.5, 4.3))      # one IEEE column
+    fig, axes = plt.subplots(len(DATASETS), 1, figsize=(3.5, 2.15 * len(DATASETS)))      # one IEEE column
     for ax, (ds, title) in zip(np.atleast_1d(axes), DATASETS.items()):
         sub = d[d.dataset == ds]
         width = 0.18
@@ -136,7 +136,8 @@ def fig1_boxplots(df, alpha=0.10):
         ax.grid(axis="x", visible=False)
     for ax in np.atleast_1d(axes):
         ax.set_ylabel(f"Test FPR (%)")
-    np.atleast_1d(axes)[0].set_xlabel("")
+    for ax in np.atleast_1d(axes)[:-1]:
+        ax.set_xlabel("")                       # x label only under the bottom panel
     handles = [plt.Rectangle((0, 0), 1, 1, facecolor=STYLE[m]["color"], hatch=STYLE[m]["hatch"],
                              edgecolor="white") for m in models]
     fig.legend(handles, [STYLE[m]["label"] for m in models], loc="upper center", ncol=2,
@@ -148,7 +149,7 @@ def fig1_boxplots(df, alpha=0.10):
 def fig2_paired(st):
     """Paired FPR change vs A (mean, 95% CI), primary protocol, both alphas."""
     alphas = [0.10, 0.05]
-    fig, axes = plt.subplots(len(DATASETS), len(alphas), figsize=(7.16, 3.2), sharex=True)
+    fig, axes = plt.subplots(len(DATASETS), len(alphas), figsize=(7.16, 1.6 * len(DATASETS)), sharex=True)
     models = ["B", "A+", "C"]
     for i, ds in enumerate(DATASETS):
         for k, al in enumerate(alphas):
@@ -167,11 +168,10 @@ def fig2_paired(st):
             ax.set_title(f"{DATASETS[ds]}, target FNR {al:.0%}" + (" (primary)" if al == 0.10 else ""))
             ax.set_xticks(range(len(RATIOS)), [f"{r:.0%}" for r in RATIOS])
             ax.grid(axis="x", visible=False)
-            if k == 0:
-                ax.set_ylabel("FPR change vs A (pp)")
             if i == len(DATASETS) - 1:
                 ax.set_xlabel("Positive-class ratio")
     h, l = axes[0, 0].get_legend_handles_labels()
+    fig.supylabel("FPR change vs A (pp)", fontsize=8, x=0.005)   # one shared y label
     fig.tight_layout(h_pad=0.8)
     fig.legend(h, l, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.05))
     save(fig, "fig2_paired_delta")
@@ -179,7 +179,7 @@ def fig2_paired(st):
 
 def fig3_lr(st, alpha=0.10):
     """C - A at every fine-tuning LR (sensitivity)."""
-    fig, axes = plt.subplots(len(DATASETS), 1, figsize=(3.5, 3.9))      # one IEEE column
+    fig, axes = plt.subplots(len(DATASETS), 1, figsize=(3.5, 1.95 * len(DATASETS)))      # one IEEE column
     for ax, ds in zip(np.atleast_1d(axes), DATASETS):
         ax.axhline(0, color=INK2, linewidth=0.9)
         for j, (lr, (col, mk)) in enumerate(LR_STYLE.items()):
@@ -196,7 +196,8 @@ def fig3_lr(st, alpha=0.10):
         ax.grid(axis="x", visible=False)
     for ax in np.atleast_1d(axes):
         ax.set_ylabel("C $-$ A FPR (pp)")
-    np.atleast_1d(axes)[0].set_xlabel("")
+    for ax in np.atleast_1d(axes)[:-1]:
+        ax.set_xlabel("")                       # x label only under the bottom panel
     h, l = np.atleast_1d(axes)[0].get_legend_handles_labels()
     fig.tight_layout(h_pad=0.6)
     fig.legend(h, l, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.06),
