@@ -40,9 +40,11 @@ All results: 10 seeds × 100 paired calibration/test re-splits, target FNR 10% (
 | Lending Club | 5% | **+3.84 pp** [2.03, 5.64] |
 | Lending Club | 10% | **+2.17 pp** [0.98, 3.36] |
 | Lending Club | 30% | +0.56 pp [−0.53, 1.64], not significant |
+| Bank Account Fraud (synthetic) | 1% / 5% / 10% | **+3.21 / +2.51 / +1.86 pp** (Holm p ≤ 0.012) |
+| Bank Account Fraud (synthetic) | 30% | +0.15 pp [−1.04, 1.34], not significant |
 
-CRT is neutral on fraud and *increases* false positives on Lending Club, more so as positives get
-rarer, at every fine-tuning learning rate tried and under Yeh et al.'s validation-based selection.
+CRT is neutral on fraud and *increases* false positives on Lending Club and Bank Account Fraud, more
+so as positives get rarer, at every fine-tuning learning rate tried and under Yeh et al.'s validation-based selection.
 Post-hoc CRC met the FNR target within sampling noise for every model. Simple class weighting
 helped on Lending Club at 1% and 5% positives (−1.8 and −2.1 pp).
 
@@ -92,10 +94,24 @@ The residual harm does not shrink significantly with ten times more positives, s
 explained by overfitting a small positive set. CRT's harm stays largest at 1% and smallest at 30%
 at every count (1%: +4.8 / +4.1 / +3.6 pp), consistent with the base-rate collapse in finding 2.
 
+**5. The diagnosis predicted where CRT would fail on a third dataset.** On Bank Account Fraud
+(a synthetic NeurIPS 2022 benchmark of intermediate difficulty), the diagnostic was run first and the
+prediction fixed before any CRT model was trained: harm where the gradient focus is ≤ 0.115.
+
+| Bank Account Fraud ratio | 1% | 5% | 10% | 30% |
+|---|---|---|---|---|
+| Gradient focus of CRT's loss | 0.101 | 0.107 | 0.113 | 0.152 |
+| Predicted harm? | yes | yes | yes | no |
+| CRT − CRC (pp) | **+3.21** | **+2.51** | **+1.86** | +0.15 (n.s.) |
+| Cs − CRT (pp) | −1.38 (n.s.) | −0.90 (n.s.) | +0.01 | +0.75 (n.s.) |
+
+The harm appeared at exactly the predicted ratios. The scale-free fix pointed the right way at 1% and
+5% but not significantly, and, as on Lending Club, a residual harm of about 1–2 pp remained.
+
 ![Paired change in FPR relative to model A](results/figures/fig2_paired_delta.png)
 
-*Paired change in test FPR relative to model A (v2; mean and 95% CI over 10 seeds). Below zero = fewer
-false positives than A. Top: credit card fraud; bottom: Lending Club.*
+*Paired change in test FPR relative to model A (mean and 95% CI over 10 seeds). Below zero = fewer
+false positives than A. Rows: credit card fraud, Lending Club, Bank Account Fraud.*
 
 <table>
 <tr>
@@ -134,13 +150,14 @@ the score space and the temperature.
 
 **Datasets**
 
-| | Credit Card Fraud (ULB) | Lending Club |
-|---|---|---|
-| Source | kagglehub `mlg-ulb/creditcardfraud` | kagglehub `wordsforthewise/lending-club` |
-| Rows used | 284,807 transactions | 1,345,350 resolved loans (Fully Paid vs Charged Off / Default) |
-| Positives kept per ratio | all 492 frauds | 1,500 defaults sampled per seed (500 and 5,000 in Experiment 3) |
-| Features | 30 (28 PCA + time + amount) | 50 (only columns known at loan issue; no leakage) |
-| Train / cal / test positives | 246 / 148 / 98 | 750 / 450 / 300 (at 1,500 defaults) |
+| | Credit Card Fraud (ULB) | Lending Club | Bank Account Fraud (BAF) |
+|---|---|---|---|
+| Source | kagglehub `mlg-ulb/creditcardfraud` | kagglehub `wordsforthewise/lending-club` | kagglehub `sgpjesus/bank-account-fraud-dataset-neurips-2022` (Base.csv) |
+| Type | real | real | **synthetic**, generated from a real bank dataset |
+| Rows used | 284,807 transactions | 1,345,350 resolved loans (Fully Paid vs Charged Off / Default) | 1,000,000 account applications (1.10% fraud) |
+| Positives kept per ratio | all 492 frauds | 1,500 defaults per seed (500 and 5,000 in Experiment 3) | 1,500 frauds per seed |
+| Features | 30 (28 PCA + time + amount) | 50 (only columns known at loan issue; no leakage) | 51 (month dropped; missing codes → train median) |
+| Train / cal / test positives | 246 / 148 / 98 | 750 / 450 / 300 (at 1,500 defaults) | 750 / 450 / 300 |
 
 **Protocol**
 
@@ -189,10 +206,11 @@ ImbalanceCRT/
 │   ├── train_npos.py          # v3 Exp 3: A, C, Cs on Lending Club with 500 / 5,000 defaults
 │   └── analyze_npos.py        # v3 Exp 3: harm vs number of positives
 ├── results/
-│   ├── fraud_crt_v2.csv, lending_club_crt_v2.csv     # v2 main results
+│   ├── fraud_crt_v2.csv, lending_club_crt_v2.csv, baf_crt_v2.csv   # v2 main results
 │   ├── stats_paired.csv, tables/, figures/           # v2 statistics, table, figures
 │   ├── *_surrogate_diag.csv                          # Exp 0
 │   ├── *_crt_v3.csv, stats_v3.csv                    # Exp 1
+│   ├── lending_club_ceiling_check.csv                # gradient-boosted trees vs MLP (descriptive)
 │   ├── lending_club_npos{500,5000}.csv, stats_npos.csv   # Exp 3
 │   └── fraud_baselines*.csv, fraud_crt.csv           # earlier runs, kept for the record (see below)
 ├── requirements.txt
@@ -246,6 +264,16 @@ python src/train_npos.py --n_pos 5000
 python src/analyze_npos.py                               # Exp 3 statistics
 ```
 
+**5. Third dataset (Bank Account Fraud)**
+
+```bash
+python src/data.py --dataset baf
+python src/diagnose_surrogate.py --dataset baf           # run first: fixes the prediction
+python src/train_crt.py --dataset baf                    # -> results/baf_crt_v2.csv
+python src/train_crt_v3.py --dataset baf                 # -> results/baf_crt_v3.csv
+python src/analyze.py && python src/analyze_v3.py
+```
+
 Running the analysis scripts on the CSVs in this repository reproduces the numbers above.
 All settings live in `src/config.py`.
 
@@ -266,7 +294,8 @@ The repository also keeps earlier fraud-only results for transparency:
 
 ## Limitations
 
-- One architecture (a small MLP) and two datasets.
+- One architecture (a small MLP) and three datasets; the third (Bank Account Fraud) is synthetic and
+  was added after the diagnosis, although its prediction was fixed before any CRT model was trained.
 - Positives are fixed and negatives vary, so imbalance is partly confounded with training-set size;
   Experiment 3 varies the number of positives at a fixed ratio, but the number of negatives still
   changes with it.
@@ -290,6 +319,10 @@ The repository also keeps earlier fraud-only results for transparency:
   [arXiv:2208.02814](https://arxiv.org/abs/2208.02814)
 - A. Dal Pozzolo, O. Caelen, R. A. Johnson, G. Bontempi. *Calibrating Probability with
   Undersampling for Unbalanced Classification.* IEEE SSCI 2015 (credit card fraud dataset).
+
+- S. Jesus, J. Pombal, D. Alves, A. Cruz, P. Saleiro, R. P. Ribeiro, J. Gama, P. Bizarro. *Turning the
+  Tables: Biased, Imbalanced, Dynamic Tabular Datasets for ML Evaluation.* NeurIPS 2022 Datasets and
+  Benchmarks. [arXiv:2211.13358](https://arxiv.org/abs/2211.13358) (Bank Account Fraud dataset)
 
 ## Citation
 
