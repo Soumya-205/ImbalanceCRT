@@ -74,6 +74,11 @@ T = 0.1 × std(the step's negative logits); everything else matches CRT.
 On Lending Club the harm no longer grows with imbalance, but a residual of about 1–2 pp remains.
 On fraud the sharper loss is slightly harmful at a 10% target and clearly harmful at a 5% target
 (+4.6 to +7.4 pp at 1–10%). Neither version of CRT beats post-hoc CRC.
+<p align="center"><img src="results/figures/fig4_diagnosis_fix.png" alt="Gradient focus of the CRT loss and FPR change of CRT vs scale-free CRT on Lending Club" width="480"></p>
+
+*Lending Club. Top: share of the CRT loss's gradient on the 10% of negatives nearest the threshold
+(0.10 = every negative pushed equally), at the start of fine-tuning. Bottom: paired FPR change vs
+model A for original CRT (C) and scale-free CRT (Cs) at target FNR 10% (mean and 95% CI, 10 seeds).*
 
 **4. The imbalance effect follows the positive *ratio*, not the positive *count* (v3, Experiment 3).**
 Repeating Lending Club with 500, 1,500 and 5,000 defaults per seed:
